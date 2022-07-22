@@ -4,6 +4,28 @@
 #include<iostream>
 #include<cstdio>
 using namespace cv;
+//c++ 计时opencv的api的 计时函数。用了api，会比实际时间多1.几毫秒
+class Mytime {
+public:
+    Mytime() {
+        time = static_cast<double>(cv::getTickCount());
+    }
+    Mytime(const std::string& iMes) :mes(iMes) {
+        time = static_cast<double>(cv::getTickCount());
+    }
+    ~Mytime() {
+        time = (static_cast<double>(cv::getTickCount()) - time) / cv::getTickFrequency() * 1000;
+        std::cout << mes << "耗时：" << time << "ms" << std::endl;
+    }
+    double time;
+    std::string mes;
+};
+
+
+
+
+
+
 static void help(int argc);
 
 enum imageType
@@ -25,6 +47,7 @@ Rawimage rawImg;
 FILE* ifp;
 void identify();//identify raw image message.
 void unpacked_load_raw();
+void doDemosaic(int quality, cv::Mat& src, cv::Mat& dst);
 const char* inputRawPath;
 void (*load_raw)();//函数指针。
 int main(int argc, char* argv[]) {
@@ -47,8 +70,13 @@ int main(int argc, char* argv[]) {
     else if (rawImg.bytePerPixel == 2) {
         src = cv::Mat(rawImg.h, rawImg.w, CV_16UC1, rawImg.data);
     }
-
-
+    cv::Mat rgb;
+    int quality = 0;
+    if (src.data != NULL) {
+        Mytime time;
+        doDemosaic(quality, src, rgb);
+    }
+    cv::imwrite("rgb.bmp",rgb);
     fclose(ifp);
     free(rawImg.data);
     return 0;
@@ -91,4 +119,26 @@ void unpacked_load_raw() {
     if (fread(rawImg.data, rawImg.bytePerPixel, size, ifp) < size) {
         std::cout << "read raw data error\n" << std::endl;
     };
+}
+void doDemosaic(int quality, cv::Mat& src, cv::Mat& dst) {
+    cv::Mat rgb;
+    switch (quality)
+    {
+    case 0:
+        cv::cvtColor(src, rgb, COLOR_BayerGB2BGR);
+        break;
+    case 1:
+        cv::cvtColor(src, rgb, COLOR_BayerGB2BGR_EA);
+        break;
+    default:
+
+        break;
+    }
+    dst = rgb;
+    if (src.type() == CV_16UC1) {
+        rgb.convertTo(dst, CV_32FC3);
+        dst = dst / 4096 * 255;//线性量化到0-255；
+        dst.convertTo(dst, CV_8UC3);
+    }
+
 }
