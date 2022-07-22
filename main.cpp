@@ -1,10 +1,10 @@
-//´¦ÀíÁ÷³Ì¼¸ºõÍêÈ«²Î¿¼dcraw¡£
-//²»»á×îºó±à³Ìdcraw°É¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£
+//å¤„ç†æµç¨‹å‡ ä¹å®Œå…¨å‚è€ƒdcrawã€‚
+//ä¸ä¼šæœ€åç¼–ç¨‹dcrawå§ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚ã€‚
 #include<opencv.hpp>
 #include<iostream>
 #include<cstdio>
 using namespace cv;
-//c++ ¼ÆÊ±opencvµÄapiµÄ ¼ÆÊ±º¯Êı¡£ÓÃÁËapi£¬»á±ÈÊµ¼ÊÊ±¼ä¶à1.¼¸ºÁÃë
+//c++ è®¡æ—¶opencvçš„apiçš„ è®¡æ—¶å‡½æ•°ã€‚ç”¨äº†apiï¼Œä¼šæ¯”å®é™…æ—¶é—´å¤š1.å‡ æ¯«ç§’
 class Mytime {
 public:
     Mytime() {
@@ -15,7 +15,7 @@ public:
     }
     ~Mytime() {
         time = (static_cast<double>(cv::getTickCount()) - time) / cv::getTickFrequency() * 1000;
-        std::cout << mes << "ºÄÊ±£º" << time << "ms" << std::endl;
+        std::cout << mes << "è€—æ—¶ï¼š" << time << "ms" << std::endl;
     }
     double time;
     std::string mes;
@@ -49,7 +49,7 @@ void identify();//identify raw image message.
 void unpacked_load_raw();
 void doDemosaic(int quality, cv::Mat& src, cv::Mat& dst);
 const char* inputRawPath;
-void (*load_raw)();//º¯ÊıÖ¸Õë¡£
+void (*load_raw)();//å‡½æ•°æŒ‡é’ˆã€‚
 int main(int argc, char* argv[]) {
     help(argc);
     inputRawPath = argv[1];
@@ -137,7 +137,7 @@ void doDemosaic(int quality, cv::Mat& src, cv::Mat& dst) {
     dst = rgb;
     if (src.type() == CV_16UC1) {
         rgb.convertTo(dst, CV_32FC3);
-        dst = dst / 4096 * 255;//ÏßĞÔÁ¿»¯µ½0-255£»
+        dst = dst / 4096 * 255;//çº¿æ€§é‡åŒ–åˆ°0-255ï¼›
         dst.convertTo(dst, CV_8UC3);
     }
 
