@@ -15,7 +15,7 @@ public:
     }
     ~Mytime() {
         time = (static_cast<double>(cv::getTickCount()) - time) / cv::getTickFrequency() * 1000;
-        std::cout << mes << "耗时：" << time << "ms" << std::endl;
+        std::cout << mes << "cost time: " << time << "ms" << std::endl;
     }
     double time;
     std::string mes;
@@ -42,6 +42,11 @@ struct Rawimage
     void* data;
     int8_t bytePerPixel;
 };
+struct  PipeLineLabel
+{
+    int DemosaicMethod;
+    String filterColor;
+};
 
 Rawimage rawImg;
 FILE* ifp;
@@ -49,10 +54,42 @@ void identify();//identify raw image message.
 void unpacked_load_raw();
 void doDemosaic(int quality, cv::Mat& src, cv::Mat& dst);
 const char* inputRawPath;
-void (*load_raw)();//函数指针。
+void (*load_raw)() = NULL;//函数指针。
 int main(int argc, char* argv[]) {
     help(argc);
-    inputRawPath = argv[1];
+    //参数识别
+    argv[argc] = (char*)"";
+    int arg; char opm; char opt; char* cp; const char* sp;
+    PipeLineLabel labels = { -1 };
+    for (arg = 1; (((opm = argv[arg][0]) - 2) | 2) == '+';) //第二个公式的写法，确保-或者+开头的参数。
+    {
+        opt = argv[arg++][1];
+        if ((cp = (char*)strchr(sp = "q", opt)))
+        {
+            for (int i = 0; i < "1"[cp - sp] - '0'; i++) // cp-sp 地址相减，获取一个整数，获取字符，然后字符相减
+                if (!isdigit(argv[arg + i][0]))                   // 判断类型选项后的参数是否位数字。有的是一个数字作为参数，有的是多个，多个有个这个if和循环
+                {                                                 //不是就报错
+                    fprintf(stderr, ("Non-numeric argument to \"-%c\"\n"), opt);
+                    return 1;
+                }
+        }
+        switch (opt)
+        {
+        case 'f':
+            labels.filterColor = argv[arg++];
+            break;
+        case 'q':
+            labels.DemosaicMethod = atoi(argv[arg++]);
+            break;
+        default:
+            fprintf(stderr, ("Unknown option \"-%c\".\n"), opt);
+            return -1;
+        }
+    }
+
+    printf("filter color: %s\n", labels.filterColor.c_str());
+
+    inputRawPath = argv[arg];
     ifp = fopen(inputRawPath, "rb");
     //void*test=malloc(2);
     //std::cout<< fread(test,1,2,ifp)<<"\n";
@@ -62,7 +99,13 @@ int main(int argc, char* argv[]) {
     }
     identify();
     rawImg.data = calloc(rawImg.w * rawImg.h, rawImg.bytePerPixel);
-    load_raw();
+    if (load_raw) {
+        load_raw();
+    }
+    else {
+        printf("no corret size for the image\n");
+        exit(-1);
+    }
     cv::Mat src;
     if (rawImg.bytePerPixel == 1) {
         src = cv::Mat(rawImg.h, rawImg.w, CV_8UC1, rawImg.data);
@@ -72,11 +115,15 @@ int main(int argc, char* argv[]) {
     }
     cv::Mat rgb;
     int quality = 0;
+    if (labels.DemosaicMethod >= 0) {
+        quality = labels.DemosaicMethod;
+        printf("\ndemosaic method %d\n", labels.DemosaicMethod);
+    }
     if (src.data != NULL) {
         Mytime time;
         doDemosaic(quality, src, rgb);
     }
-    cv::imwrite("rgb.bmp",rgb);
+    cv::imwrite("rgb.bmp", rgb);
     fclose(ifp);
     free(rawImg.data);
     return 0;
@@ -84,7 +131,8 @@ int main(int argc, char* argv[]) {
 
 void help(int argc) {
     if (argc == 1) {
-        std::cout << "\nneed raw path\n";
+        std::cout << "\nneed parameters\n";
+        puts("-f specify the color filter 0 RGBR 1 GBRG 2 GRBG 3 BGGR");//因为杂糅了过多的代码，需要指定filter color
         exit;
     }
 }
@@ -122,6 +170,7 @@ void unpacked_load_raw() {
 }
 void doDemosaic(int quality, cv::Mat& src, cv::Mat& dst) {
     cv::Mat rgb;
+    //cvtColor按照注释是支持浮点数的。但是实际代码是不支持的，需要话得自己改代码，无论哪种改都需要改。
     switch (quality)
     {
     case 0:
@@ -130,8 +179,13 @@ void doDemosaic(int quality, cv::Mat& src, cv::Mat& dst) {
     case 1:
         cv::cvtColor(src, rgb, COLOR_BayerGB2BGR_EA);
         break;
+    case 2:
+        cv::cvtColor(src,rgb,COLOR_BayerGB2BGR_VNG);
+        break;
+    case 3:
+        puts("AHD demosaic will be add in the future: ahd\n");
+        break;
     default:
-
         break;
     }
     dst = rgb;
