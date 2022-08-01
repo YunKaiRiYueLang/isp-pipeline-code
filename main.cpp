@@ -3,6 +3,7 @@
 #include<opencv.hpp>
 #include<iostream>
 #include<cstdio>
+#include<xphoto.hpp>
 using namespace cv;
 //c++ 计时opencv的api的 计时函数。用了api，会比实际时间多1.几毫秒
 class Mytime {
@@ -45,6 +46,9 @@ struct Rawimage
 struct  PipeLineLabel
 {
     int DemosaicMethod;
+    int wbMethod;
+    bool userBlack;
+    short black[4];
     String filterColor;
 };
 
@@ -53,6 +57,8 @@ FILE* ifp;
 void identify();//identify raw image message.
 void unpacked_load_raw();
 void doDemosaic(int quality, cv::Mat& src, cv::Mat& dst);
+int saveImg(std::string name, cv::Mat& src);
+void usmEnhance(cv::Mat& src, int ksize, const int coff, cv::Mat& dst);
 const char* inputRawPath;
 void (*load_raw)() = NULL;//函数指针。
 int main(int argc, char* argv[]) {
@@ -60,13 +66,13 @@ int main(int argc, char* argv[]) {
     //参数识别
     argv[argc] = (char*)"";
     int arg; char opm; char opt; char* cp; const char* sp;
-    PipeLineLabel labels = { -1 };
+    PipeLineLabel labels = { -1 ,-1,false,{0,0,0,0},"" };
     for (arg = 1; (((opm = argv[arg][0]) - 2) | 2) == '+';) //第二个公式的写法，确保-或者+开头的参数。
     {
         opt = argv[arg++][1];
-        if ((cp = (char*)strchr(sp = "q", opt)))
+        if ((cp = (char*)strchr(sp = "qwk", opt)))
         {
-            for (int i = 0; i < "1"[cp - sp] - '0'; i++) // cp-sp 地址相减，获取一个整数，获取字符，然后字符相减
+            for (int i = 0; i < "114"[cp - sp] - '0'; i++) // cp-sp 地址相减，获取一个整数，获取字符，然后字符相减
                 if (!isdigit(argv[arg + i][0]))                   // 判断类型选项后的参数是否位数字。有的是一个数字作为参数，有的是多个，多个有个这个if和循环
                 {                                                 //不是就报错
                     fprintf(stderr, ("Non-numeric argument to \"-%c\"\n"), opt);
@@ -80,6 +86,16 @@ int main(int argc, char* argv[]) {
             break;
         case 'q':
             labels.DemosaicMethod = atoi(argv[arg++]);
+            break;
+        case 'w':
+            labels.wbMethod = atoi(argv[arg++]);
+            break;
+        case 'k':
+            labels.userBlack = true;
+            labels.black[0] = atoi(argv[arg++]);
+            labels.black[1] = atoi(argv[arg++]);
+            labels.black[2] = atoi(argv[arg++]);
+            labels.black[3] = atoi(argv[arg++]);
             break;
         default:
             fprintf(stderr, ("Unknown option \"-%c\".\n"), opt);
@@ -113,6 +129,13 @@ int main(int argc, char* argv[]) {
     else if (rawImg.bytePerPixel == 2) {
         src = cv::Mat(rawImg.h, rawImg.w, CV_16UC1, rawImg.data);
     }
+
+    if (labels.userBlack) {
+        if (labels.black[0] == labels.black[1] && labels.black[1] == labels.black[2] && labels.black[2] == labels.black[3]) {
+            src = src - labels.black[0];
+        }
+    }
+
     cv::Mat rgb;
     int quality = 0;
     if (labels.DemosaicMethod >= 0) {
@@ -123,9 +146,33 @@ int main(int argc, char* argv[]) {
         Mytime time;
         doDemosaic(quality, src, rgb);
     }
-    cv::imwrite("rgb.bmp", rgb);
+    //此处的白平衡，放在了去马赛克之后。
+    auto simpleWB = cv::xphoto::createSimpleWB();
+    if (labels.wbMethod != -1) {
+        {
+            Mytime time;
+            switch (labels.wbMethod)
+            {
+            default:
+                simpleWB->balanceWhite(rgb, rgb);
+                break;
+            }
+        }
+    }
+    {
+        Mytime time;
+        usmEnhance(rgb, 3, 0.4, rgb);
+    }
+
+    cv::imwrite("rgb1.bmp", rgb);
+    //saveImg((char*)("rgb2.bmp"), rgb);
+    imshow("isp img", rgb);
+    cv::waitKey(0);
+
+
     fclose(ifp);
     free(rawImg.data);
+    //getchar();
     return 0;
 }
 
@@ -133,6 +180,7 @@ void help(int argc) {
     if (argc == 1) {
         std::cout << "\nneed parameters\n";
         puts("-f specify the color filter 0 RGBR 1 GBRG 2 GRBG 3 BGGR");//因为杂糅了过多的代码，需要指定filter color
+        puts("-w <num> wb mtheod\n");
         exit;
     }
 }
@@ -143,7 +191,9 @@ void identify() {
         ushort rw, rh;
         ushort offset;
     } rawMesTable[] = { {5038848,2592,1944,0},
-    {10077696,2592,1944,0} };
+    {10077696,2592,1944,0},
+    {6291456,3072,2048,0},
+    {12582912,3072,2048,0} };
 
     if (ifp) {
         fseek(ifp, 0, SEEK_SET);
@@ -180,7 +230,7 @@ void doDemosaic(int quality, cv::Mat& src, cv::Mat& dst) {
         cv::cvtColor(src, rgb, COLOR_BayerGB2BGR_EA);
         break;
     case 2:
-        cv::cvtColor(src,rgb,COLOR_BayerGB2BGR_VNG);
+        cv::cvtColor(src, rgb, COLOR_BayerGB2BGR_VNG);
         break;
     case 3:
         puts("AHD demosaic will be add in the future: ahd\n");
@@ -195,4 +245,30 @@ void doDemosaic(int quality, cv::Mat& src, cv::Mat& dst) {
         dst.convertTo(dst, CV_8UC3);
     }
 
+}
+int saveImg(std::string name, cv::Mat& src) {
+    CV_Assert(src.data);
+    //cv::Mat src = imread("rgb.bmp");
+    cv::Mat normSrc; src.convertTo(normSrc, CV_32FC3);
+    //cv::normalize(normSrc, normSrc);
+    normSrc = normSrc / 255;//我这里选用以 /255 的方式归一化。
+    cv::Mat dst = normSrc.clone();
+    for (int i = 0; i < src.rows; i++) {
+        for (int j = 0; j < src.cols; j++) {
+            dst.at<Vec3f>(i, j)[0] = pow(normSrc.at<Vec3f>(i, j)[0], 0.4);
+            dst.at<Vec3f>(i, j)[1] = pow(normSrc.at<Vec3f>(i, j)[1], 0.4);
+            dst.at<Vec3f>(i, j)[2] = pow(normSrc.at<Vec3f>(i, j)[2], 0.4);
+        }
+    }
+    dst = dst * 255;
+    dst.convertTo(dst, CV_8UC3);
+    imwrite("rgbconversion.bmp", dst);//目前的理解：做这个gamma是为了抵消显示器的gamma。因为读取的图像是在 linear RGB里
+    return 0;
+}
+
+void usmEnhance(cv::Mat& src, int ksize, const int coff, cv::Mat& dst) {
+    cv::Mat tempI = src;
+    cv::GaussianBlur(tempI, tempI, cv::Size(ksize, ksize), 3);
+    float cof = static_cast<float>(coff) / 100;
+    cv::addWeighted(src, 1 + cof, tempI, cof * (-1), 0, dst);
 }
